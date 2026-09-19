@@ -36,8 +36,11 @@ export function createApp(config: Config, identityProvider: IdentityProvider): E
   app.use("/static", express.static(path.join(import.meta.dirname, "../public")));
 
   // For uptime checks and the container HEALTHCHECK. Stays unauthenticated.
+  // Reports the running version so a deploy can confirm the NEW code is live,
+  // not merely that something answered. (The commit SHA isn't sensitive: the
+  // repo is public.)
   app.get("/healthz", (_req, res) => {
-    res.json({ status: "ok" });
+    res.json({ status: "ok", version: config.version });
   });
 
   // ORDER MATTERS. Everything registered ABOVE requireAuth is public;

@@ -41,6 +41,11 @@ COPY package.json ./
 # root. Numeric uid (not a name) so it works without an /etc/passwd lookup.
 USER 65532:65532
 
+# Which commit is this? Passed by CI (--build-arg GIT_SHA=...) and reported by
+# /healthz. Declared late so changing it doesn't invalidate the cached layers above.
+ARG GIT_SHA=dev
+ENV APP_VERSION=$GIT_SHA
+
 # Inside a container "localhost" is the container itself, so the app must
 # listen on all interfaces to be reachable through the published port.
 ENV HOST=0.0.0.0 \

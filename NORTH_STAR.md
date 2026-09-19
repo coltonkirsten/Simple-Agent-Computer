@@ -36,7 +36,7 @@ Rules of the road:
 - [x] Phase 6 — Google login + allowlist
 - [x] Phase 7 — Containerize + run on the VM
 - [x] Phase 8 — Domain + HTTPS
-- [ ] Phase 9 — CI (checks on every PR)
+- [x] Phase 9 — CI (checks on every PR)
 - [ ] Phase 10 — CD (keyless deploys from GitHub)
 - [ ] Phase 11 — Hardening + operations
 

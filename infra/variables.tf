@@ -53,3 +53,15 @@ variable "domain" {
     error_message = "domain must be a bare lowercase hostname like files.example.com (no https://, no path)."
   }
 }
+
+variable "github_repository" {
+  description = "GitHub repo allowed to deploy, as owner/name."
+  type        = string
+  default     = "coltonkirsten/Simple-Agent-Computer"
+}
+
+variable "github_repository_id" {
+  description = "Numeric ID of that repo (gh api repos/OWNER/NAME --jq .id). Permanent, unlike the name."
+  type        = string
+  default     = "1377407515"
+}

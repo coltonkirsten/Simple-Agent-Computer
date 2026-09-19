@@ -21,6 +21,7 @@ read it top to bottom.
 | `start-app.sh` | Runs on the VM: fetch secrets → pull image → run the hardened app container (no published port) |
 | `start-caddy.sh` | Runs on the VM: the Caddy container — the only thing listening on 80/443 |
 | `Caddyfile.tftpl` | Caddy config: automatic HTTPS for `var.domain`, reverse proxy to the app, HSTS |
+| `wif.tf` | Workload Identity Federation: keyless GitHub Actions → GCP auth, plus the `gha-plan` (read-only) and `gha-deploy` (main only) service accounts |
 | `outputs.tf` | Values printed after apply |
 | `.terraform.lock.hcl` | Exact provider version + checksums. **Committed.** |
 
@@ -58,7 +59,24 @@ Port 22 is closed to the internet. Connect through the IAP tunnel:
 $(terraform output -raw ssh_command)
 ```
 
-## Deploying the app by hand (until CI does it in Phase 10)
+## How changes reach production
+
+**Merging to `main` is the deploy.** `.github/workflows/deploy.yml` builds the
+image (tagged with the commit SHA), runs `terraform apply`, restarts the VM and
+checks `/healthz` reports the new SHA. PRs touching `infra/` get a plan
+comment from `terraform-plan.yml`.
+
+Consequences for working locally:
+
+- Don't `terraform apply` from your laptop any more — state now records the
+  SHA that CI deployed, and a local apply would reset the image tag to its
+  default. To **plan** locally without that noise:
+  `terraform plan -var app_image_tag=$(terraform output -raw app_image_tag)`
+- Roll back: Actions → Deploy → Run workflow → enter an older commit SHA as `image_tag`.
+- Exception: changes to `wif.tf` that CI can't apply to itself (e.g. it lost
+  a permission it needs) must be applied locally.
+
+## Deploying the app by hand (break-glass only)
 
 ```sh
 gcloud auth configure-docker $(terraform output -raw registry_host)

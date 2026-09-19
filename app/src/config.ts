@@ -18,6 +18,8 @@ export interface Config {
   /** Lowercased emails allowed to log in. */
   allowedEmails: ReadonlySet<string>;
   sessionSecret: string;
+  /** Git commit this build came from (baked in by the Dockerfile), or "dev". */
+  version: string;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -71,5 +73,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     googleClientSecret: required(env, "GOOGLE_CLIENT_SECRET"),
     allowedEmails,
     sessionSecret,
+    version: env.APP_VERSION?.trim() || "dev",
   };
 }

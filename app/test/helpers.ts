@@ -24,6 +24,7 @@ export function testConfig(fileRoot: string, overrides: Partial<Config> = {}): C
     googleClientSecret: "test-client-secret",
     allowedEmails: new Set([ALLOWED]),
     sessionSecret: TEST_SESSION_SECRET,
+    version: "test-version",
     ...overrides,
   };
 }
