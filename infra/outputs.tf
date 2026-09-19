@@ -27,3 +27,13 @@ output "ssh_command" {
   description = "Paste to SSH in through the IAP tunnel."
   value       = "gcloud compute ssh ${google_compute_instance.vm.name} --zone ${var.zone} --project ${var.project_id} --tunnel-through-iap"
 }
+
+output "image" {
+  description = "Full image reference to build, push and run."
+  value       = "${local.image_repo}:${var.app_image_tag}"
+}
+
+output "registry_host" {
+  description = "For: gcloud auth configure-docker <this>"
+  value       = local.registry_host
+}

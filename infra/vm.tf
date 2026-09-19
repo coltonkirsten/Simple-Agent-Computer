@@ -55,6 +55,16 @@ resource "google_compute_instance" "vm" {
   metadata = {
     enable-oslogin         = "TRUE" # SSH access decided by IAM, not by keys in metadata
     block-project-ssh-keys = "TRUE" # ignore any project-wide SSH keys
+
+    # cloud-init config, applied on every boot. Changing it updates the VM's
+    # metadata in place but does NOT re-run it: reset the VM to apply.
+    user-data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
+      project_id    = var.project_id
+      registry_host = local.registry_host
+      image         = "${local.image_repo}:${var.app_image_tag}"
+      base_url      = "http://${google_compute_address.vm.address}" # https + domain in Phase 8
+      start_script  = file("${path.module}/start-app.sh")
+    })
   }
 
   # Some changes (e.g. service account, machine type) require a stop/start.

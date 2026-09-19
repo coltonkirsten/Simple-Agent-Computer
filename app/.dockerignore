@@ -1,0 +1,19 @@
+# Everything here is kept OUT of the build context sent to Docker.
+# Most important: .env — without this line, a `COPY . .` would bake your
+# real OAuth secret into an image layer, permanently.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+coverage
+test
+*.md
+.git
+.nvmrc
+.prettierrc.json
+.prettierignore
+eslint.config.js
+Dockerfile
+.dockerignore

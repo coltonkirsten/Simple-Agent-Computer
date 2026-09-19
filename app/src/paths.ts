@@ -28,6 +28,7 @@ const DENIED_PREFIXES = [
   "/sys",
   "/dev",
   "/run/secrets",
+  "/run/sac", // this app's own runtime secrets on the VM (infra/start-app.sh)
   "/var/lib/docker",
   "/var/lib/caddy", // TLS private keys (Phase 8)
   "/etc/shadow",

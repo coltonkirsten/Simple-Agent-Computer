@@ -15,6 +15,10 @@ read it top to bottom.
 | `network.tf` | Custom VPC, subnet, firewall rules (80/443 public, 22 from IAP only) |
 | `iam.tf` | The VM's least-privilege service account; admin SSH access via IAP + OS Login |
 | `vm.tf` | Static IP + the e2-micro Container-Optimized OS instance |
+| `registry.tf` | Artifact Registry docker repo + cleanup policy |
+| `secrets.tf` | Secret Manager containers (no values!) + per-secret read access for the VM |
+| `cloud-init.yaml.tftpl` | Boot-time config for the VM: writes the script + systemd unit below |
+| `start-app.sh` | Runs on the VM: fetch secrets → pull image → run the hardened container |
 | `outputs.tf` | Values printed after apply |
 | `.terraform.lock.hcl` | Exact provider version + checksums. **Committed.** |
 
@@ -51,6 +55,29 @@ Port 22 is closed to the internet. Connect through the IAP tunnel:
 ```sh
 $(terraform output -raw ssh_command)
 ```
+
+## Deploying the app by hand (until CI does it in Phase 10)
+
+```sh
+gcloud auth configure-docker $(terraform output -raw registry_host)
+docker build --platform linux/amd64 -t $(terraform output -raw image) ../app
+docker push $(terraform output -raw image)
+gcloud compute ssh sac-vm --zone us-central1-a --tunnel-through-iap \
+  --command 'sudo systemctl restart sac-app'
+```
+
+`--platform linux/amd64` matters on Apple Silicon: the VM is x86.
+
+Debugging on the VM:
+
+```sh
+sudo systemctl status sac-app        # is it running?
+sudo journalctl -u sac-app -n 50     # script + container output
+docker ps                            # STATUS should say (healthy)
+```
+
+Changing `cloud-init.yaml.tftpl` or `start-app.sh` only updates metadata;
+cloud-init re-reads it at boot: `gcloud compute instances reset sac-vm --zone us-central1-a`
 
 ## Rules
 
