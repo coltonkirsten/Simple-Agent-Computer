@@ -43,3 +43,13 @@ variable "app_image_tag" {
   type        = string
   default     = "manual"
 }
+
+variable "domain" {
+  description = "Hostname the app is served on, e.g. files.example.com. Its DNS A record must point at the VM's external_ip BEFORE the VM boots with this config, or Let's Encrypt can't validate it."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$", var.domain))
+    error_message = "domain must be a bare lowercase hostname like files.example.com (no https://, no path)."
+  }
+}

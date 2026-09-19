@@ -62,8 +62,10 @@ resource "google_compute_instance" "vm" {
       project_id    = var.project_id
       registry_host = local.registry_host
       image         = "${local.image_repo}:${var.app_image_tag}"
-      base_url      = "http://${google_compute_address.vm.address}" # https + domain in Phase 8
+      base_url      = "https://${var.domain}"
       start_script  = file("${path.module}/start-app.sh")
+      caddy_script  = file("${path.module}/start-caddy.sh")
+      caddyfile     = templatefile("${path.module}/Caddyfile.tftpl", { domain = var.domain })
     })
   }
 

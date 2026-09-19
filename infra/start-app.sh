@@ -55,8 +55,8 @@ SESSION_SECRET=$SESSION_SECRET
 ALLOWED_EMAILS=$ALLOWED_EMAILS
 EOF
 
-# The app demands https + Secure cookies in production mode. Until Phase 8
-# gives us a domain and TLS, BASE_URL is plain http and we stay out of it.
+# Production mode (Secure "__Host-" cookies, trust one proxy hop) whenever
+# we're served over https. The app refuses to start in production over http.
 NODE_ENV=development
 if [[ "$BASE_URL" == https://* ]]; then NODE_ENV=production; fi
 
@@ -75,7 +75,9 @@ docker rm -f sac-app 2>/dev/null || true
 #                              no chown, no mount, ...). The app needs none.
 #   --security-opt=no-new-privileges   setuid binaries can't escalate
 #   --pids-limit / --memory    a runaway or hostile process can't starve the VM
-#   -p 80:3000                 TEMPORARY for Phase 7; Phase 8 puts Caddy in front
+#   --network sac-net          private docker network shared with Caddy. Note
+#                              there is NO -p flag: the app publishes no port
+#                              on the VM at all. The only way in is via Caddy.
 #
 # `exec` replaces this shell with docker, so systemd tracks the real process.
 exec docker run --rm --name sac-app \
@@ -90,5 +92,5 @@ exec docker run --rm --name sac-app \
   --security-opt=no-new-privileges \
   --pids-limit=100 \
   --memory=512m \
-  -p 80:3000 \
+  --network sac-net \
   "$IMAGE"

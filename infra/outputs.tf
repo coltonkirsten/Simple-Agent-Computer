@@ -37,3 +37,13 @@ output "registry_host" {
   description = "For: gcloud auth configure-docker <this>"
   value       = local.registry_host
 }
+
+output "url" {
+  description = "Where the app lives."
+  value       = "https://${var.domain}"
+}
+
+output "oauth_redirect_uri" {
+  description = "Must be listed under \"Authorized redirect URIs\" on the Google OAuth client."
+  value       = "https://${var.domain}/auth/callback"
+}

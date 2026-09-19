@@ -28,13 +28,56 @@ write_files:
     content: |
       ${indent(6, start_script)}
 
+  - path: /etc/sac/start-caddy.sh
+    permissions: "0755"
+    content: |
+      ${indent(6, caddy_script)}
+
+  - path: /etc/sac/Caddyfile
+    permissions: "0644"
+    content: |
+      ${indent(6, caddyfile)}
+
+  # A user-defined docker network gives containers DNS by name (Caddy reaches
+  # the app as "sac-app") and keeps them off docker's shared default bridge.
+  # It's its own oneshot unit so both containers can depend on it without racing.
+  - path: /etc/systemd/system/sac-network.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Docker network shared by Caddy and the app
+      Wants=docker.service
+      After=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'docker network inspect sac-net >/dev/null 2>&1 || docker network create sac-net'
+
+  - path: /etc/systemd/system/sac-caddy.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Caddy reverse proxy (TLS) container
+      Requires=sac-network.service
+      Wants=network-online.target
+      After=sac-network.service network-online.target
+
+      [Service]
+      Environment="HOME=/home/cloudservice"
+      ExecStart=/bin/bash /etc/sac/start-caddy.sh
+      ExecStop=/usr/bin/docker stop sac-caddy
+      Restart=always
+      RestartSec=15
+
   - path: /etc/systemd/system/sac-app.service
     permissions: "0644"
     content: |
       [Unit]
       Description=Simple Agent Computer app container
-      Wants=docker.service network-online.target
-      After=docker.service network-online.target
+      Requires=sac-network.service
+      Wants=network-online.target
+      After=sac-network.service network-online.target
 
       [Service]
       Environment="HOME=/home/cloudservice"
@@ -52,3 +95,4 @@ write_files:
 runcmd:
   - systemctl daemon-reload
   - systemctl start sac-app.service
+  - systemctl start sac-caddy.service

@@ -9,7 +9,7 @@ read it top to bottom.
 |---|---|
 | `versions.tf` | Pins Terraform + the Google provider; configures the provider |
 | `backend.tf` | Stores state in the GCS bucket created in [bootstrap](../docs/bootstrap.md) |
-| `variables.tf` | Inputs (`project_id`, `region`, `zone`, `vm_name`, `admin_email`) |
+| `variables.tf` | Inputs (`project_id`, `region`, `zone`, `vm_name`, `admin_email`, `domain`, `app_image_tag`) |
 | `terraform.tfvars.example` | Template for your gitignored `terraform.tfvars` |
 | `apis.tf` | Enables the GCP APIs later phases need |
 | `network.tf` | Custom VPC, subnet, firewall rules (80/443 public, 22 from IAP only) |
@@ -17,8 +17,10 @@ read it top to bottom.
 | `vm.tf` | Static IP + the e2-micro Container-Optimized OS instance |
 | `registry.tf` | Artifact Registry docker repo + cleanup policy |
 | `secrets.tf` | Secret Manager containers (no values!) + per-secret read access for the VM |
-| `cloud-init.yaml.tftpl` | Boot-time config for the VM: writes the script + systemd unit below |
-| `start-app.sh` | Runs on the VM: fetch secrets → pull image → run the hardened container |
+| `cloud-init.yaml.tftpl` | Boot-time config for the VM: writes the scripts, Caddyfile and systemd units below |
+| `start-app.sh` | Runs on the VM: fetch secrets → pull image → run the hardened app container (no published port) |
+| `start-caddy.sh` | Runs on the VM: the Caddy container — the only thing listening on 80/443 |
+| `Caddyfile.tftpl` | Caddy config: automatic HTTPS for `var.domain`, reverse proxy to the app, HSTS |
 | `outputs.tf` | Values printed after apply |
 | `.terraform.lock.hcl` | Exact provider version + checksums. **Committed.** |
 
@@ -71,9 +73,10 @@ gcloud compute ssh sac-vm --zone us-central1-a --tunnel-through-iap \
 Debugging on the VM:
 
 ```sh
-sudo systemctl status sac-app        # is it running?
-sudo journalctl -u sac-app -n 50     # script + container output
-docker ps                            # STATUS should say (healthy)
+sudo systemctl status sac-app sac-caddy   # are they running?
+sudo journalctl -u sac-app -n 50          # app: script + container output
+sudo journalctl -u sac-caddy -n 50        # caddy: certificate issuance shows up here
+docker ps                                 # both containers up; sac-app says (healthy)
 ```
 
 Changing `cloud-init.yaml.tftpl` or `start-app.sh` only updates metadata;
