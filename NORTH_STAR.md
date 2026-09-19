@@ -34,7 +34,7 @@ Rules of the road:
 - [x] Phase 4 — Network + VM
 - [x] Phase 5 — App v0: file explorer (local, no auth)
 - [x] Phase 6 — Google login + allowlist
-- [ ] Phase 7 — Containerize + run on the VM
+- [x] Phase 7 — Containerize + run on the VM
 - [ ] Phase 8 — Domain + HTTPS
 - [ ] Phase 9 — CI (checks on every PR)
 - [ ] Phase 10 — CD (keyless deploys from GitHub)

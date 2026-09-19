@@ -1,0 +1,25 @@
+# Caddy is the only thing listening on the internet. It terminates TLS and
+# forwards plain HTTP to the app over a private docker network.
+#
+# Naming a real domain as the site address is all it takes to switch on
+# AUTOMATIC HTTPS. Caddy will:
+#   - prove to Let's Encrypt that it controls the domain (the ACME challenge:
+#     Let's Encrypt connects back to this server on port 80/443, which is why
+#     the DNS record must exist BEFORE first boot)
+#   - obtain a certificate, store it under /data, renew it ~30 days before expiry
+#   - redirect every http:// request to https://
+${domain} {
+	# "sac-app" is the app container's name; docker's built-in DNS resolves it
+	# on the shared network. Caddy adds X-Forwarded-For/-Proto/-Host, which the
+	# app trusts for exactly one hop (`trust proxy` in app/src/app.ts).
+	reverse_proxy sac-app:3000
+
+	encode gzip
+
+	header {
+		# HSTS: for the next year, browsers refuse to talk to this host over
+		# plain http at all, defeating "SSL stripping" attacks on hostile wifi.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
