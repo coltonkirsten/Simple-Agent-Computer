@@ -8,8 +8,9 @@ import { authRouter, requireAuth } from "./auth.js";
 import type { Config } from "./config.js";
 import { isDirectory, listDir, readTextFile } from "./files.js";
 import type { IdentityProvider } from "./identity.js";
+import { audit, logError } from "./log.js";
 import { PathError, safeResolve } from "./paths.js";
-import { getSession, sessionMiddleware } from "./session.js";
+import { getSession, sessionMiddleware, type Session } from "./session.js";
 import { renderDirectory, renderError, renderFile, type Viewer } from "./views.js";
 
 export function createApp(config: Config, identityProvider: IdentityProvider): Express {
@@ -31,7 +32,24 @@ export function createApp(config: Config, identityProvider: IdentityProvider): E
   // origin. Even if an XSS bug slipped past escapeHtml(), an injected
   // <script> would refuse to run. (This is why the CSS is a separate file
   // rather than an inline <style> block.)
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        // Start from "nothing is allowed" and open only what the pages use:
+        // one stylesheet, and forms that post back to us. No scripts at all —
+        // this app ships zero JavaScript, so there is nothing to allow.
+        useDefaults: false,
+        directives: {
+          "default-src": ["'none'"],
+          "style-src": ["'self'"],
+          "img-src": ["'self'"],
+          "form-action": ["'self'"],
+          "base-uri": ["'none'"], // no <base> tag hijacking relative links
+          "frame-ancestors": ["'none'"], // nobody may embed us in an iframe (clickjacking)
+        },
+      },
+    }),
+  );
 
   app.use("/static", express.static(path.join(import.meta.dirname, "../public")));
 
@@ -41,6 +59,13 @@ export function createApp(config: Config, identityProvider: IdentityProvider): E
   // repo is public.)
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok", version: config.version });
+  });
+
+  // Browsers request this on their own. Answer it here, publicly: if it fell
+  // through to requireAuth it would overwrite the "return to" destination and
+  // send people to /favicon.ico after logging in.
+  app.get("/favicon.ico", (_req, res) => {
+    res.status(204).end();
   });
 
   // ORDER MATTERS. Everything registered ABOVE requireAuth is public;
@@ -63,22 +88,31 @@ export function createApp(config: Config, identityProvider: IdentityProvider): E
   // --- HTML UI --------------------------------------------------------------
   app.get("/browse", async (req, res) => {
     const target = await safeResolve(config.fileRoot, req.query.path ?? "/");
+    const email = viewerOf(res).email;
     if (await isDirectory(target)) {
-      res.send(renderDirectory(await listDir(target), viewerOf(res)));
+      const listing = await listDir(target);
+      audit("dir_list", { email, path: target.virtual });
+      res.send(renderDirectory(listing, viewerOf(res)));
     } else {
-      res.send(renderFile(await readTextFile(target), viewerOf(res)));
+      const file = await readTextFile(target);
+      audit("file_view", { email, path: target.virtual, bytes: file.size });
+      res.send(renderFile(file, viewerOf(res)));
     }
   });
 
   // --- JSON API -------------------------------------------------------------
   app.get("/api/tree", async (req, res) => {
     const target = await safeResolve(config.fileRoot, req.query.path ?? "/");
-    res.json(await listDir(target));
+    const listing = await listDir(target);
+    audit("dir_list", { email: viewerOf(res).email, path: target.virtual });
+    res.json(listing);
   });
 
   app.get("/api/file", async (req, res) => {
     const target = await safeResolve(config.fileRoot, req.query.path);
-    res.json(await readTextFile(target));
+    const file = await readTextFile(target);
+    audit("file_view", { email: viewerOf(res).email, path: target.virtual, bytes: file.size });
+    res.json(file);
   });
 
   // Note what is NOT here: no POST/PUT/DELETE file routes at all. Read-only.
@@ -97,8 +131,19 @@ export function createApp(config: Config, identityProvider: IdentityProvider): E
     if (err instanceof PathError) {
       status = err.status;
       message = err.message;
+      // A logged-in user probing outside the root or at deny-listed paths is
+      // exactly what an audit trail is for. (404s are just typos; skip them.)
+      if (status === 403) {
+        audit("access_denied", {
+          // Optional chaining: an error thrown before the session middleware
+          // ran must not crash the error handler itself.
+          email: (res.locals.session as Session | undefined)?.user?.email,
+          requested: typeof req.query.path === "string" ? req.query.path.slice(0, 500) : undefined,
+          reason: err.message,
+        });
+      }
     } else {
-      console.error(err);
+      logError("unhandled_error", err);
     }
 
     if (req.path.startsWith("/api/")) {

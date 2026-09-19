@@ -155,7 +155,13 @@ describe("HTML UI", () => {
 
   it("sets security headers", async () => {
     const res = await agent.get("/browse");
-    expect(res.headers["content-security-policy"]).toContain("default-src 'self'");
+    const csp = res.headers["content-security-policy"];
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("style-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    // No script-src at all: falls back to default-src 'none'. Zero JS allowed.
+    expect(csp).not.toContain("script-src");
+    expect(csp).not.toContain("unsafe-inline");
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
     expect(res.headers["x-powered-by"]).toBeUndefined();
   });

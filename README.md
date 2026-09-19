@@ -11,6 +11,12 @@ and security best practices throughout.
 **📍 The plan lives in [NORTH_STAR.md](NORTH_STAR.md).** It's broken into small
 phases, each landing as one pull request.
 
+## Operating it
+
+- **[docs/runbook.md](docs/runbook.md)** — change the allowlist, rotate secrets, roll back, read the audit log, debug an outage, tear down
+- **[SECURITY.md](SECURITY.md)** — the security model, layer by layer, and its known limits
+- [infra/README.md](infra/README.md) — how changes reach production
+
 ## Layout
 
 | Path | What |
