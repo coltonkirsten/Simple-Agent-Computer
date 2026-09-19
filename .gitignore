@@ -1,0 +1,47 @@
+# --- Secrets & local env (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# GCP service account keys — we use Workload Identity Federation instead
+*-sa.json
+*credentials*.json
+
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+# tfvars can hold real project IDs/emails; commit only the example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+*.tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — it pins provider
+# checksums and should be committed.
+
+# --- Node ---
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+.npm/
+.eslintcache
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
