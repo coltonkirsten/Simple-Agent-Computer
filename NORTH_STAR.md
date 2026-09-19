@@ -31,7 +31,7 @@ Rules of the road:
 - [x] Phase 1 — Repo hygiene
 - [x] Phase 2 — GCP project bootstrap
 - [x] Phase 3 — Terraform skeleton + remote state
-- [ ] Phase 4 — Network + VM
+- [x] Phase 4 — Network + VM
 - [ ] Phase 5 — App v0: file explorer (local, no auth)
 - [ ] Phase 6 — Google login + allowlist
 - [ ] Phase 7 — Containerize + run on the VM

@@ -9,6 +9,8 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-json
+        # tsconfig files are JSONC (comments allowed), which strict JSON rejects
+        exclude: ^app/tsconfig.*\.json$
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=500]
