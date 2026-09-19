@@ -7,7 +7,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { safeReturnTo } from "../src/auth.js";
 import { loadConfig, parseAllowedEmails } from "../src/config.js";
 import { createFixture, type Fixture } from "./fixture.js";
-import { ALLOWED, csrfTokenFrom, FakeIdentityProvider, login, makeApp } from "./helpers.js";
+import {
+  ALLOWED,
+  CANONICAL_HOST,
+  csrfTokenFrom,
+  FakeIdentityProvider,
+  login,
+  makeApp,
+} from "./helpers.js";
 
 let fx: Fixture;
 let app: Express;
@@ -68,7 +75,7 @@ describe("without a session", () => {
 
 describe("GET /auth/login", () => {
   it("redirects to the identity provider and sets a hardened cookie", async () => {
-    const res = await request(app).get("/auth/login");
+    const res = await request(app).get("/auth/login").set("Host", CANONICAL_HOST);
     expect(res.status).toBe(302);
     expect(res.headers.location).toContain("https://idp.test/authorize");
 
@@ -80,9 +87,18 @@ describe("GET /auth/login", () => {
     expect(cookie).not.toContain("fake-verifier");
   });
 
+  it("moves a login started on the wrong host to the canonical one, without a cookie", async () => {
+    // e.g. the user opened http://127.0.0.1:3000 but BASE_URL is http://localhost:3000.
+    // Planting the cookie here would strand it on a host Google never returns to.
+    const res = await request(app).get("/auth/login").set("Host", "127.0.0.1:3000");
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe("http://localhost:3000/auth/login");
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
   it("uses a Secure, __Host- prefixed cookie in production", async () => {
     const prod = makeApp(fx.root, { production: true, baseUrl: "https://files.example.com" });
-    const res = await request(prod).get("/auth/login");
+    const res = await request(prod).get("/auth/login").set("Host", "files.example.com");
     const cookie = res.headers["set-cookie"]?.[0] ?? "";
     expect(cookie).toMatch(/^__Host-sac_session=/);
     expect(cookie).toMatch(/Secure/i);
@@ -131,7 +147,7 @@ describe("GET /auth/callback", () => {
 
   it("rejects a callback with the wrong state (login CSRF)", async () => {
     const agent = request.agent(app);
-    await agent.get("/auth/login");
+    await agent.get("/auth/login").set("Host", CANONICAL_HOST);
     const res = await agent.get("/auth/callback").query({ code: "allowed", state: "forged" });
     expect(res.status).toBe(400);
     expect((await agent.get("/api/tree?path=/")).status).toBe(401);
@@ -209,7 +225,7 @@ describe("rate limiting", () => {
   it("throttles repeated hits on /auth", async () => {
     const statuses = [];
     for (let i = 0; i < 32; i++) {
-      statuses.push((await request(app).get("/auth/login")).status);
+      statuses.push((await request(app).get("/auth/login").set("Host", CANONICAL_HOST)).status);
     }
     expect(statuses.slice(0, 30).every((s) => s === 302)).toBe(true);
     expect(statuses.at(-1)).toBe(429);

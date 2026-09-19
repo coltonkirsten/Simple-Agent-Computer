@@ -70,9 +70,16 @@ export function makeApp(fileRoot: string, overrides: Partial<Config> = {}): Expr
 
 export type Agent = ReturnType<typeof request.agent>;
 
+/**
+ * supertest talks to the app on 127.0.0.1:<random port>. The login route
+ * insists on the canonical host, so tests present the Host header a real
+ * browser would send when visiting BASE_URL.
+ */
+export const CANONICAL_HOST = "localhost:3000";
+
 /** Run the full login flow. The agent keeps cookies between requests, like a browser. */
 export async function login(agent: Agent, code = "allowed") {
-  await agent.get("/auth/login");
+  await agent.get("/auth/login").set("Host", CANONICAL_HOST);
   return agent.get("/auth/callback").query({ code, state: FakeIdentityProvider.STATE });
 }
 

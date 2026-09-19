@@ -57,7 +57,18 @@ export function authRouter(config: Config, provider: IdentityProvider): Router {
   );
 
   // Step 1: send the browser to Google.
-  router.get("/login", async (_req, res) => {
+  router.get("/login", async (req, res) => {
+    // Cookies are scoped to a host, and browsers treat "localhost" and
+    // "127.0.0.1" as different hosts. If the login starts on one and Google
+    // sends the callback to the other (it always uses the registered
+    // BASE_URL), the cookie holding state/nonce/PKCE isn't sent and the
+    // callback fails with "No login in progress". So: always start the flow
+    // on the canonical host, BEFORE planting the cookie.
+    if (req.host !== new URL(config.baseUrl).host) {
+      res.redirect(`${config.baseUrl}/auth/login`);
+      return;
+    }
+
     const session = getSession(res);
     const { redirectUrl, pending } = await provider.startLogin();
     session.pending = pending;
