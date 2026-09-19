@@ -21,3 +21,19 @@ variable "zone" {
   type        = string
   default     = "us-central1-a"
 }
+
+variable "vm_name" {
+  description = "Name of the Compute Engine instance."
+  type        = string
+  default     = "sac-vm"
+}
+
+variable "admin_email" {
+  description = "Google account allowed to SSH into the VM through IAP. Kept in tfvars so it stays out of the public repo."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+$", var.admin_email))
+    error_message = "admin_email must be a plain email address (no \"user:\" prefix)."
+  }
+}

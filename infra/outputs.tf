@@ -13,3 +13,17 @@ output "enabled_apis" {
   description = "APIs enabled by this configuration."
   value       = sort([for s in google_project_service.enabled : s.service])
 }
+
+output "vm_name" {
+  value = google_compute_instance.vm.name
+}
+
+output "external_ip" {
+  description = "Static public IP of the VM. Point DNS here in Phase 8."
+  value       = google_compute_address.vm.address
+}
+
+output "ssh_command" {
+  description = "Paste to SSH in through the IAP tunnel."
+  value       = "gcloud compute ssh ${google_compute_instance.vm.name} --zone ${var.zone} --project ${var.project_id} --tunnel-through-iap"
+}
