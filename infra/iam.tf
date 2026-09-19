@@ -10,11 +10,14 @@ resource "google_service_account" "vm" {
   depends_on = [google_project_service.enabled]
 }
 
+# Phase 11 IAM review:
+#   - removed roles/monitoring.metricWriter: no metrics agent runs on the VM,
+#     so the permission was unused.
+#   - roles/artifactregistry.reader moved from the whole project down to the
+#     one repository it pulls from (see below).
 locals {
   vm_roles = [
-    "roles/logging.logWriter",       # ship logs to Cloud Logging
-    "roles/monitoring.metricWriter", # ship metrics to Cloud Monitoring
-    "roles/artifactregistry.reader", # pull the app image (Phase 7)
+    "roles/logging.logWriter", # ship logs to Cloud Logging
   ]
 }
 
@@ -27,6 +30,15 @@ resource "google_project_iam_member" "vm" {
   project = var.project_id
   role    = each.value
   member  = google_service_account.vm.member
+}
+
+# Pull images from OUR repository only — not from any registry that might
+# ever be created in this project.
+resource "google_artifact_registry_repository_iam_member" "vm_pulls" {
+  repository = google_artifact_registry_repository.app.name
+  location   = google_artifact_registry_repository.app.location
+  role       = "roles/artifactregistry.reader"
+  member     = google_service_account.vm.member
 }
 
 # --- Admin SSH access ----------------------------------------------------------

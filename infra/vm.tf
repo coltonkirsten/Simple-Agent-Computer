@@ -63,6 +63,13 @@ resource "google_compute_instance" "vm" {
     enable-oslogin         = "TRUE" # SSH access decided by IAM, not by keys in metadata
     block-project-ssh-keys = "TRUE" # ignore any project-wide SSH keys
 
+    # Turns on COS's built-in logging agent, which ships container output
+    # (the app's JSON audit lines, Caddy's access log) and system logs to
+    # Cloud Logging. Without it, logs live only on the VM's disk — and die
+    # with it, which is exactly when you'd want them. Authenticates as the
+    # VM's service account (roles/logging.logWriter in iam.tf).
+    google-logging-enabled = "true"
+
     # cloud-init config, applied on every boot. Changing it updates the VM's
     # metadata in place but does NOT re-run it: reset the VM to apply.
     user-data = templatefile("${path.module}/cloud-init.yaml.tftpl", {

@@ -21,6 +21,7 @@ read it top to bottom.
 | `start-app.sh` | Runs on the VM: fetch secrets → pull image → run the hardened app container (no published port) |
 | `start-caddy.sh` | Runs on the VM: the Caddy container — the only thing listening on 80/443 |
 | `Caddyfile.tftpl` | Caddy config: automatic HTTPS for `var.domain`, reverse proxy to the app, HSTS |
+| `monitoring.tf` | Uptime check on `/healthz` from multiple regions + email alert after 10 min down |
 | `wif.tf` | Workload Identity Federation: keyless GitHub Actions → GCP auth, plus the `gha-plan` (read-only) and `gha-deploy` (main only) service accounts |
 | `outputs.tf` | Values printed after apply |
 | `.terraform.lock.hcl` | Exact provider version + checksums. **Committed.** |

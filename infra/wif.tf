@@ -140,6 +140,7 @@ locals {
     "roles/resourcemanager.projectIamAdmin", # manage project-level role bindings
     "roles/serviceusage.serviceUsageAdmin",  # enable APIs
     "roles/iap.admin",                       # manage IAP tunnel access
+    "roles/monitoring.admin",                # uptime check, alert policy, notification channel
   ]
 }
 

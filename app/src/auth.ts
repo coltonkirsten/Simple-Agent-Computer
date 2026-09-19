@@ -10,13 +10,9 @@ import express, { Router, type NextFunction, type Request, type Response } from 
 import { rateLimit } from "express-rate-limit";
 import type { Config } from "./config.js";
 import type { IdentityProvider } from "./identity.js";
+import { audit } from "./log.js";
 import { getSession } from "./session.js";
 import { renderError, renderSignedOut } from "./views.js";
-
-/** Structured audit line. Phase 11 ships these to Cloud Logging. */
-function audit(event: string, details: Record<string, unknown>) {
-  console.log(JSON.stringify({ time: new Date().toISOString(), event, ...details }));
-}
 
 function isAllowed(config: Config, email: string): boolean {
   return config.allowedEmails.has(email.toLowerCase());
@@ -103,7 +99,11 @@ export function authRouter(config: Config, provider: IdentityProvider): Router {
     // Authorization. An unverified email proves nothing about who owns the
     // address, so it's treated the same as not being on the list.
     if (!identity.emailVerified || !isAllowed(config, identity.email)) {
-      audit("login_denied", { email: identity.email, emailVerified: identity.emailVerified });
+      audit("login_denied", {
+        email: identity.email,
+        emailVerified: identity.emailVerified,
+        ip: req.ip,
+      });
       session.destroy(); // no session of any kind for a rejected user
       res
         .status(403)
@@ -118,7 +118,7 @@ export function authRouter(config: Config, provider: IdentityProvider): Router {
     session.csrfToken = randomBytes(32).toString("base64url");
     await session.save();
 
-    audit("login_allowed", { email: session.user.email });
+    audit("login_allowed", { email: session.user.email, ip: req.ip });
     res.redirect(safeReturnTo(returnTo));
   });
 
