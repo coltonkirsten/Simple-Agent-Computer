@@ -47,3 +47,34 @@ output "oauth_redirect_uri" {
   description = "Must be listed under \"Authorized redirect URIs\" on the Google OAuth client."
   value       = "https://${var.domain}/auth/callback"
 }
+
+output "zone" {
+  value = var.zone
+}
+
+output "app_image_tag" {
+  description = "Tag currently deployed. CI passes it back into `plan` so an unrelated PR doesn't show an image diff."
+  value       = var.app_image_tag
+}
+
+output "image_repo" {
+  description = "Image path without a tag."
+  value       = local.image_repo
+}
+
+# --- Values for GitHub repo variables (none are secret; see wif.tf) ---
+
+output "wif_provider" {
+  description = "GitHub variable WIF_PROVIDER"
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "plan_sa" {
+  description = "GitHub variable PLAN_SA"
+  value       = google_service_account.gha_plan.email
+}
+
+output "deploy_sa" {
+  description = "GitHub variable DEPLOY_SA"
+  value       = google_service_account.gha_deploy.email
+}

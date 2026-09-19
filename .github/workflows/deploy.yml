@@ -1,0 +1,147 @@
+# CD: merge to main → production, with no manual commands.
+#
+#   build image (tagged with the commit SHA) → push to Artifact Registry
+#   → terraform apply → restart the VM → verify the new version is live
+#
+# Authenticates as gha-deploy via Workload Identity Federation. GCP only
+# honours that for tokens whose ref is refs/heads/main (infra/wif.tf), and the
+# `production` environment below pauses the job until you approve it.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    # Docs-only merges don't deploy.
+    paths:
+      - "app/**"
+      - "infra/**"
+      - ".github/workflows/deploy.yml"
+  # Manual run (Actions tab → Deploy → Run workflow). Give an existing image
+  # tag to ROLL BACK to it without rebuilding.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag (a commit SHA) to redeploy. Empty = build the current commit."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Never run two deploys at once, and never cancel one halfway through an apply.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-24.04
+    # A GitHub Environment is an approval gate: the job waits here until a
+    # required reviewer clicks Approve. Configured in repo Settings → Environments.
+    environment:
+      name: production
+      url: https://${{ vars.APP_DOMAIN }}
+    permissions:
+      contents: read
+      id-token: write # request the GitHub OIDC token used for WIF
+    env:
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_domain: ${{ vars.APP_DOMAIN }}
+      TF_VAR_admin_email: ${{ secrets.ADMIN_EMAIL }}
+      # Never interpolate user-supplied input straight into a script (that's a
+      # shell-injection hole). Passing it through env makes it plain data.
+      REQUESTED_TAG: ${{ inputs.image_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.3
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra
+        run: terraform init -input=false -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tfstate"
+
+      - name: Decide image tag
+        id: tag
+        run: |
+          if [ -n "$REQUESTED_TAG" ]; then
+            # Rollback: only accept something shaped like a tag.
+            if ! [[ "$REQUESTED_TAG" =~ ^[A-Za-z0-9_.-]{1,128}$ ]]; then
+              echo "::error::image_tag contains unexpected characters"; exit 1
+            fi
+            echo "tag=$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            # Tagging with the commit SHA makes every image traceable to the
+            # exact source, and makes rollback "deploy an older SHA".
+            echo "tag=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push image
+        if: steps.tag.outputs.build == 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          IMAGE_REPO=$(terraform -chdir=infra output -raw image_repo)
+          # Teach docker to log in to Artifact Registry with the WIF credentials.
+          gcloud auth configure-docker "$(terraform -chdir=infra output -raw registry_host)" --quiet
+          docker build --build-arg "GIT_SHA=$TAG" -t "$IMAGE_REPO:$TAG" app
+          docker push "$IMAGE_REPO:$TAG"
+
+      - name: Check the image exists
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: gcloud artifacts docker images describe "$(terraform -chdir=infra output -raw image_repo):$TAG" --format="value(image_summary.digest)"
+
+      # Applies any infra changes in this commit AND points the VM's boot
+      # config at the new image tag. The human gate for this was the PR review
+      # (with the plan comment) plus the environment approval above.
+      - name: Terraform apply
+        working-directory: infra
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: terraform apply -input=false -auto-approve -var "app_image_tag=$TAG"
+
+      # The VM reads its config (image tag, scripts, Caddyfile) only at boot,
+      # via cloud-init. A clean stop/start re-applies ALL of it, so there is
+      # exactly one deploy path and nothing to forget. Cost: ~2 minutes of
+      # downtime per deploy. Zero-downtime would need a load balancer and a
+      # second VM, which this project deliberately doesn't pay for.
+      - name: Restart the VM
+        run: |
+          VM=$(terraform -chdir=infra output -raw vm_name)
+          ZONE=$(terraform -chdir=infra output -raw zone)
+          gcloud compute instances stop "$VM" --zone "$ZONE" --quiet
+          gcloud compute instances start "$VM" --zone "$ZONE" --quiet
+
+      # Not "did something answer" but "is THIS commit answering".
+      - name: Smoke test
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          URL: https://${{ vars.APP_DOMAIN }}/healthz
+        run: |
+          for attempt in $(seq 1 40); do
+            BODY=$(curl -fsS --max-time 5 "$URL" || true)
+            VERSION=$(echo "$BODY" | jq -r '.version // empty' 2>/dev/null || true)
+            if [ "$VERSION" = "$TAG" ]; then
+              echo "Live: $BODY"
+              exit 0
+            fi
+            echo "attempt $attempt: not yet (got: ${BODY:-no response})"
+            sleep 10
+          done
+          echo "::error::$URL did not report version $TAG within ~7 minutes"
+          exit 1
