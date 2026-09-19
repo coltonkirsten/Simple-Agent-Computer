@@ -4,13 +4,24 @@
 import path from "node:path";
 import express, { type ErrorRequestHandler, type Express } from "express";
 import helmet from "helmet";
+import { authRouter, requireAuth } from "./auth.js";
 import type { Config } from "./config.js";
 import { isDirectory, listDir, readTextFile } from "./files.js";
+import type { IdentityProvider } from "./identity.js";
 import { PathError, safeResolve } from "./paths.js";
-import { renderDirectory, renderError, renderFile } from "./views.js";
+import { getSession, sessionMiddleware } from "./session.js";
+import { renderDirectory, renderError, renderFile, type Viewer } from "./views.js";
 
-export function createApp(config: Config): Express {
+export function createApp(config: Config, identityProvider: IdentityProvider): Express {
   const app = express();
+
+  // In production we sit behind one reverse proxy (Caddy, Phase 8). Trusting
+  // exactly one hop makes req.ip the real client address (for rate limiting)
+  // instead of the proxy's. Never enable this without a proxy in front:
+  // clients could then spoof their IP with an X-Forwarded-For header.
+  if (config.production) {
+    app.set("trust proxy", 1);
+  }
 
   // Don't advertise the framework in an "X-Powered-By" header.
   app.disable("x-powered-by");
@@ -29,17 +40,30 @@ export function createApp(config: Config): Express {
     res.json({ status: "ok" });
   });
 
+  // ORDER MATTERS. Everything registered ABOVE requireAuth is public;
+  // everything BELOW it needs a logged-in, allowlisted user. Putting the gate
+  // in one place means a new route is protected by default.
+  app.use(sessionMiddleware(config));
+  app.use("/auth", authRouter(config, identityProvider));
+  app.use(requireAuth(config));
+
   app.get("/", (_req, res) => {
     res.redirect("/browse?path=%2F");
   });
+
+  // requireAuth guarantees both fields exist by the time this is called.
+  const viewerOf = (res: express.Response): Viewer => {
+    const session = getSession(res);
+    return { email: session.user!.email, csrfToken: session.csrfToken! };
+  };
 
   // --- HTML UI --------------------------------------------------------------
   app.get("/browse", async (req, res) => {
     const target = await safeResolve(config.fileRoot, req.query.path ?? "/");
     if (await isDirectory(target)) {
-      res.send(renderDirectory(await listDir(target)));
+      res.send(renderDirectory(await listDir(target), viewerOf(res)));
     } else {
-      res.send(renderFile(await readTextFile(target)));
+      res.send(renderFile(await readTextFile(target), viewerOf(res)));
     }
   });
 
@@ -54,7 +78,7 @@ export function createApp(config: Config): Express {
     res.json(await readTextFile(target));
   });
 
-  // Note what is NOT here: no POST/PUT/DELETE routes at all. Read-only.
+  // Note what is NOT here: no POST/PUT/DELETE file routes at all. Read-only.
 
   app.use((_req, res) => {
     res.status(404).send(renderError(404, "Not found"));

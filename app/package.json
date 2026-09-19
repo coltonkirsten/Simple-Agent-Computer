@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "test": "vitest run",
@@ -18,7 +18,10 @@
   },
   "dependencies": {
     "express": "^5.2.1",
-    "helmet": "^8.3.0"
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "iron-session": "^9.0.1",
+    "openid-client": "^6.8.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
