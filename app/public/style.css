@@ -1,0 +1,104 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1c1e21;
+  --muted: #6b7280;
+  --bg: #fafafa;
+  --line: #e5e7eb;
+  --link: #1a56db;
+  --code-bg: #f3f4f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e5e7eb;
+    --muted: #9ca3af;
+    --bg: #111318;
+    --line: #2a2e37;
+    --link: #7aa7ff;
+    --code-bg: #1a1d24;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    15px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb {
+  margin-bottom: 16px;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.breadcrumb .sep {
+  margin: 0 6px;
+  color: var(--muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-weight: normal;
+  font-size: 13px;
+}
+
+td.icon {
+  width: 24px;
+}
+
+td.name {
+  overflow-wrap: anywhere;
+}
+
+td.size,
+td.mtime {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.note {
+  color: var(--muted);
+}
+
+pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
