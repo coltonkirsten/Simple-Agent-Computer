@@ -1,0 +1,54 @@
+#cloud-config
+# cloud-init is the standard "configure this machine at boot" tool, and the
+# supported way to customise Container-Optimized OS. GCP hands this file to the
+# VM through the `user-data` metadata key (see vm.tf). It is re-applied on
+# EVERY boot, which matters because /etc on COS is wiped at each reboot.
+#
+# This is a Terraform template: the dollar-brace placeholders are filled in by
+# templatefile() in vm.tf. No secrets pass through here — instance metadata is
+# readable by anyone with project viewer access.
+
+users:
+  # COS's root home is read-only; docker-credential-gcr needs a writable HOME
+  # to store its config. This is the pattern from Google's COS docs.
+  - name: cloudservice
+    uid: 2000
+
+write_files:
+  - path: /etc/sac/config.env
+    permissions: "0644"
+    content: |
+      PROJECT_ID=${project_id}
+      REGISTRY_HOST=${registry_host}
+      IMAGE=${image}
+      BASE_URL=${base_url}
+
+  - path: /etc/sac/start-app.sh
+    permissions: "0755"
+    content: |
+      ${indent(6, start_script)}
+
+  - path: /etc/systemd/system/sac-app.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Simple Agent Computer app container
+      Wants=docker.service network-online.target
+      After=docker.service network-online.target
+
+      [Service]
+      Environment="HOME=/home/cloudservice"
+      ExecStart=/bin/bash /etc/sac/start-app.sh
+      ExecStop=/usr/bin/docker stop sac-app
+      # systemd (not docker) is the supervisor: if the container or the script
+      # exits for any reason, wait 15s and start over — including re-fetching
+      # secrets and re-pulling the image.
+      Restart=always
+      RestartSec=15
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl start sac-app.service

@@ -92,6 +92,7 @@ describe("deny-list", () => {
     "/proc/1/environ",
     "/sys/kernel",
     "/dev/mem",
+    "/run/sac/app.env",
     "/etc/shadow",
     "/etc/ssh/ssh_host_ed25519_key",
     "/var/lib/docker/containers",

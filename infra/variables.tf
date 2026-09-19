@@ -37,3 +37,9 @@ variable "admin_email" {
     error_message = "admin_email must be a plain email address (no \"user:\" prefix)."
   }
 }
+
+variable "app_image_tag" {
+  description = "Tag of the app image the VM runs. \"manual\" until CI takes over in Phase 10."
+  type        = string
+  default     = "manual"
+}
