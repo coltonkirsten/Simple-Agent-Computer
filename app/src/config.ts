@@ -73,3 +73,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionSecret,
   };
 }
+
+const unused = 1;
