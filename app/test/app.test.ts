@@ -1,18 +1,23 @@
-// End-to-end tests through real HTTP requests (supertest drives the Express
-// app in-process; no port is opened).
+// End-to-end tests of the file explorer through real HTTP requests (supertest
+// drives the Express app in-process; no port is opened). Everything here runs
+// as a logged-in user; what happens WITHOUT a session is in auth.test.ts.
 
 import type { Express } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createApp } from "../src/app.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createFixture, XSS_NAME, type Fixture } from "./fixture.js";
+import { login, makeApp, type Agent } from "./helpers.js";
 
 let fx: Fixture;
 let app: Express;
+let agent: Agent; // a logged-in "browser"
 
 beforeAll(async () => {
   fx = await createFixture();
-  app = createApp({ fileRoot: fx.root, host: "127.0.0.1", port: 0 });
+  vi.spyOn(console, "log").mockImplementation(() => {}); // silence audit lines
+  app = makeApp(fx.root);
+  agent = request.agent(app);
+  await login(agent);
 });
 afterAll(() => fx.cleanup());
 
@@ -26,7 +31,7 @@ describe("GET /healthz", () => {
 
 describe("GET /api/tree", () => {
   it("lists the root, directories first", async () => {
-    const res = await request(app).get("/api/tree").query({ path: "/" });
+    const res = await agent.get("/api/tree").query({ path: "/" });
     expect(res.status).toBe(200);
     expect(res.body.path).toBe("/");
 
@@ -40,56 +45,56 @@ describe("GET /api/tree", () => {
   });
 
   it("defaults to the root when no path is given", async () => {
-    const res = await request(app).get("/api/tree");
+    const res = await agent.get("/api/tree");
     expect(res.status).toBe(200);
     expect(res.body.path).toBe("/");
   });
 
   it("hides deny-listed entries from listings", async () => {
-    const root = await request(app).get("/api/tree").query({ path: "/" });
+    const root = await agent.get("/api/tree").query({ path: "/" });
     expect(root.body.entries.map((e: { name: string }) => e.name)).not.toContain(".env");
 
-    const home = await request(app).get("/api/tree").query({ path: "/home/me" });
+    const home = await agent.get("/api/tree").query({ path: "/home/me" });
     expect(home.body.entries).toEqual([]);
   });
 
   it("reports symlinks as symlinks without following them", async () => {
-    const res = await request(app).get("/api/tree").query({ path: "/" });
+    const res = await agent.get("/api/tree").query({ path: "/" });
     const link = res.body.entries.find((e: { name: string }) => e.name === "link-out");
     expect(link.type).toBe("symlink");
   });
 
   it("rejects a file", async () => {
-    const res = await request(app).get("/api/tree").query({ path: "/hello.txt" });
+    const res = await agent.get("/api/tree").query({ path: "/hello.txt" });
     expect(res.status).toBe(400);
   });
 });
 
 describe("GET /api/file", () => {
   it("returns a text file", async () => {
-    const res = await request(app).get("/api/file").query({ path: "/hello.txt" });
+    const res = await agent.get("/api/file").query({ path: "/hello.txt" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ path: "/hello.txt", size: 12, content: "hello world\n" });
   });
 
   it("requires a path", async () => {
-    expect((await request(app).get("/api/file")).status).toBe(400);
+    expect((await agent.get("/api/file")).status).toBe(400);
   });
 
   it("refuses files over 1 MB", async () => {
-    const res = await request(app).get("/api/file").query({ path: "/big.bin" });
+    const res = await agent.get("/api/file").query({ path: "/big.bin" });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/larger/);
   });
 
   it("refuses binary files", async () => {
-    const res = await request(app).get("/api/file").query({ path: "/binary.dat" });
+    const res = await agent.get("/api/file").query({ path: "/binary.dat" });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/binary/);
   });
 
   it("refuses a directory", async () => {
-    const res = await request(app).get("/api/file").query({ path: "/sub" });
+    const res = await agent.get("/api/file").query({ path: "/sub" });
     expect(res.status).toBe(400);
   });
 });
@@ -106,50 +111,50 @@ describe("traversal over HTTP", () => {
     ["array param", "/api/tree?path=/&path=/sub", 400],
     ["deny-listed", "/api/file?path=/.env", 403],
   ])("%s → %i", async (_name, url, status) => {
-    const res = await request(app).get(url);
+    const res = await agent.get(url);
     expect(res.status).toBe(status);
     expect(JSON.stringify(res.body)).not.toContain("TOP SECRET");
   });
 
   it("never leaks real disk paths in error messages", async () => {
-    const res = await request(app).get("/api/file?path=/nope");
+    const res = await agent.get("/api/file?path=/nope");
     expect(JSON.stringify(res.body)).not.toContain(fx.root);
   });
 });
 
 describe("HTML UI", () => {
   it("redirects / to the browser", async () => {
-    const res = await request(app).get("/");
+    const res = await agent.get("/");
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/browse?path=%2F");
   });
 
   it("renders a directory", async () => {
-    const res = await request(app).get("/browse").query({ path: "/sub" });
+    const res = await agent.get("/browse").query({ path: "/sub" });
     expect(res.status).toBe(200);
     expect(res.text).toContain("nested.txt");
   });
 
   it("renders a file", async () => {
-    const res = await request(app).get("/browse").query({ path: "/hello.txt" });
+    const res = await agent.get("/browse").query({ path: "/hello.txt" });
     expect(res.status).toBe(200);
     expect(res.text).toContain("hello world");
   });
 
   it("escapes hostile file names (XSS)", async () => {
-    const res = await request(app).get("/browse").query({ path: "/" });
+    const res = await agent.get("/browse").query({ path: "/" });
     expect(res.text).not.toContain(XSS_NAME);
     expect(res.text).toContain("&lt;img src=x onerror=alert(1)&gt;.txt");
   });
 
   it("renders an HTML error page for traversal", async () => {
-    const res = await request(app).get("/browse?path=../outside");
+    const res = await agent.get("/browse?path=../outside");
     expect(res.status).toBe(403);
     expect(res.headers["content-type"]).toMatch(/html/);
   });
 
   it("sets security headers", async () => {
-    const res = await request(app).get("/browse");
+    const res = await agent.get("/browse");
     expect(res.headers["content-security-policy"]).toContain("default-src 'self'");
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
     expect(res.headers["x-powered-by"]).toBeUndefined();
@@ -158,7 +163,7 @@ describe("HTML UI", () => {
 
 describe("read-only", () => {
   it.each(["post", "put", "patch", "delete"] as const)("%s is not routed", async (method) => {
-    const res = await request(app)[method]("/api/file").query({ path: "/hello.txt" });
+    const res = await agent[method]("/api/file").query({ path: "/hello.txt" });
     expect(res.status).toBe(404);
   });
 });

@@ -8,6 +8,12 @@
 
 import type { DirListing, FileContents } from "./files.js";
 
+/** The logged-in user, for the header. Absent on error and signed-out pages. */
+export interface Viewer {
+  email: string;
+  csrfToken: string;
+}
+
 export function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -25,7 +31,19 @@ function joinVirtual(dir: string, name: string): string {
   return dir === "/" ? `/${name}` : `${dir}/${name}`;
 }
 
-function layout(title: string, body: string): string {
+function header(viewer: Viewer | undefined): string {
+  if (!viewer) return "";
+  // Logout is a POST form (not a link) carrying the CSRF token; see auth.ts.
+  return `  <header>
+    <span>${escapeHtml(viewer.email)}</span>
+    <form method="post" action="/auth/logout">
+      <input type="hidden" name="csrf" value="${escapeHtml(viewer.csrfToken)}">
+      <button type="submit">Log out</button>
+    </form>
+  </header>`;
+}
+
+function layout(title: string, body: string, viewer?: Viewer): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -35,6 +53,7 @@ function layout(title: string, body: string): string {
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+${header(viewer)}
   <main>
 ${body}
   </main>
@@ -64,7 +83,7 @@ function formatSize(bytes: number | null): string {
 
 const ICONS = { dir: "📁", file: "📄", symlink: "🔗", other: "⚙️" } as const;
 
-export function renderDirectory(listing: DirListing): string {
+export function renderDirectory(listing: DirListing, viewer: Viewer): string {
   const rows = listing.entries
     .map((entry) => {
       const name = escapeHtml(entry.name);
@@ -98,15 +117,17 @@ ${rows}
       </tbody>
     </table>
     ${empty}${truncated}`,
+    viewer,
   );
 }
 
-export function renderFile(file: FileContents): string {
+export function renderFile(file: FileContents, viewer: Viewer): string {
   return layout(
     file.path,
     `${breadcrumb(file.path)}
     <p class="note">${formatSize(file.size)}</p>
     <pre>${escapeHtml(file.content)}</pre>`,
+    viewer,
   );
 }
 
@@ -116,5 +137,13 @@ export function renderError(status: number, message: string): string {
     `<h1>${status}</h1>
     <p>${escapeHtml(message)}</p>
     <p><a href="${browseUrl("/")}">Back to root</a></p>`,
+  );
+}
+
+export function renderSignedOut(): string {
+  return layout(
+    "Signed out",
+    `<h1>Signed out</h1>
+    <p><a href="/auth/login">Sign in again</a></p>`,
   );
 }
