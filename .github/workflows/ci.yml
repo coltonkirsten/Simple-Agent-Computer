@@ -1,0 +1,191 @@
+# CI: runs on every pull request. Nothing here can touch GCP — no cloud
+# credentials exist in this workflow. (Deploys are Phase 10.)
+#
+# Anatomy:  workflow (this file) → jobs (run in parallel, each on a fresh VM)
+#           → steps (run in order inside a job).
+name: CI
+
+on:
+  pull_request:
+
+# The GITHUB_TOKEN handed to this workflow can only READ the repo. Default
+# tokens can be far more powerful; a compromised dependency or action running
+# in CI would inherit whatever is granted here. Jobs opt in to more if needed.
+permissions:
+  contents: read
+
+# A new push to the same PR cancels the run still in progress for the old commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# ABOUT THE LONG HASHES: every third-party action is pinned to a full commit
+# SHA, with the human-readable version in a trailing comment. A tag like "v4"
+# is mutable: whoever controls (or compromises) the action's repo can re-point
+# it at malicious code, and every workflow using the tag runs it on the next
+# build — this has happened to widely used actions. A commit SHA can't be
+# re-pointed. Dependabot reads the version comments and opens bump PRs.
+
+jobs:
+  # Decide which parts of the repo this PR touches, so an infra-only change
+  # doesn't run the app test suite and vice versa.
+  #
+  # Why not the simpler top-level `on.pull_request.paths` filter? Because a
+  # workflow that never starts never reports a status — and a REQUIRED status
+  # check that never reports blocks the PR forever. Skipping at the job level
+  # (with `if:`) reports "skipped", which branch protection treats as passing.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists the PR's files via the API
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          # Changing the workflow itself re-runs everything.
+          filters: |
+            app:
+              - 'app/**'
+              - '.github/workflows/ci.yml'
+            infra:
+              - 'infra/**'
+              - '.github/workflows/ci.yml'
+
+  app:
+    name: App (lint, typecheck, test, audit)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Don't leave the token in .git/config for later steps to find.
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # `npm ci` (not `npm install`): exactly the lockfile, fail if out of sync.
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # Known-vulnerable dependencies. "high" keeps the signal-to-noise sane.
+      - run: npm audit --audit-level=high
+
+  infra:
+    name: Infra (fmt, validate, tflint, shellcheck)
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.3
+      - run: terraform fmt -check -recursive -diff
+      # -backend=false: download providers but don't connect to the state
+      # bucket. CI has no GCP credentials, and validate doesn't need state.
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+      - uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+        with:
+          tflint_version: v0.64.0
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # avoids API rate limits when downloading the ruleset plugin
+        run: |
+          tflint --init
+          tflint --format compact
+      # These scripts run as root on the VM; lint them like code.
+      - run: shellcheck start-app.sh start-caddy.sh
+
+  security:
+    name: Security (secrets, misconfiguration)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # full history: a secret deleted in a later commit is still leaked
+      # The pre-commit hook can be skipped with --no-verify; this can't.
+      # Downloaded directly and checksum-verified rather than via an action.
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --no-banner
+      # Static analysis of Terraform + Dockerfile for insecure settings.
+      # Accepted findings are ignored INLINE, next to the code, with a reason
+      # (search the repo for "trivy:ignore").
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  image:
+    name: Image (build, vulnerability scan)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Build only — nothing is pushed anywhere from a PR.
+      - run: docker build -t sac-app:ci app
+      # Scans OS packages in the base image AND node_modules for known CVEs.
+      # ignore-unfixed: only fail on things we can actually fix by upgrading.
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: sac-app:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # The ONE check to mark as "required" in branch protection. It passes only
+  # if every job above passed or was deliberately skipped. Requiring this
+  # instead of each job means jobs can be added or renamed without touching
+  # repo settings.
+  ci-passed:
+    name: CI passed
+    needs: [changes, app, infra, security, image]
+    if: always() # run even when something upstream failed, so it can report failure
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check upstream results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::A CI job finished with: $result"
+              exit 1
+            fi
+          done

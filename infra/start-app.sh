@@ -9,6 +9,7 @@ set -euo pipefail
 
 # Non-secret settings written by cloud-init from Terraform values:
 # PROJECT_ID, REGISTRY_HOST, IMAGE, BASE_URL
+# shellcheck source=/dev/null  (the file only exists on the VM)
 source /etc/sac/config.env
 
 METADATA="http://metadata.google.internal/computeMetadata/v1"
