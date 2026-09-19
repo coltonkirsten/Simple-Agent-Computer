@@ -9,9 +9,12 @@ read it top to bottom.
 |---|---|
 | `versions.tf` | Pins Terraform + the Google provider; configures the provider |
 | `backend.tf` | Stores state in the GCS bucket created in [bootstrap](../docs/bootstrap.md) |
-| `variables.tf` | Inputs (`project_id`, `region`, `zone`) |
+| `variables.tf` | Inputs (`project_id`, `region`, `zone`, `vm_name`, `admin_email`) |
 | `terraform.tfvars.example` | Template for your gitignored `terraform.tfvars` |
 | `apis.tf` | Enables the GCP APIs later phases need |
+| `network.tf` | Custom VPC, subnet, firewall rules (80/443 public, 22 from IAP only) |
+| `iam.tf` | The VM's least-privilege service account; admin SSH access via IAP + OS Login |
+| `vm.tf` | Static IP + the e2-micro Container-Optimized OS instance |
 | `outputs.tf` | Values printed after apply |
 | `.terraform.lock.hcl` | Exact provider version + checksums. **Committed.** |
 
@@ -40,6 +43,14 @@ and recreate (watch out for these on anything stateful).
 
 A healthy config is **idempotent**: right after an apply, `terraform plan`
 must say `No changes.`
+
+## SSH
+
+Port 22 is closed to the internet. Connect through the IAP tunnel:
+
+```sh
+$(terraform output -raw ssh_command)
+```
 
 ## Rules
 
