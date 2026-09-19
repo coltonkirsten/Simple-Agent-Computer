@@ -17,22 +17,31 @@ The app writes one JSON line per security-relevant event; the VM ships them to
 Cloud Logging. Events: `login_allowed`, `login_denied`, `login_failed`,
 `logout`, `dir_list`, `file_view`, `access_denied`.
 
-Console: **Logging → Logs Explorer**, paste a query, pick a time range.
+Console: **Logging → Logs Explorer**. **Set the time range first** (top bar →
+"Last 1 hour") — an empty result is almost always a time window that doesn't
+cover the events.
+
+The VM's logging agent parses each JSON line into fields under `jsonPayload`
+and honours its `severity`, so query on fields rather than searching text:
 
 ```
-"login_allowed"
+jsonPayload.event="login_allowed"
 ```
 ```
-"login_denied" OR "access_denied"
+jsonPayload.audit=true AND severity>=WARNING
 ```
 ```
-"file_view" AND "someone@gmail.com"
+jsonPayload.event="file_view" AND jsonPayload.email="someone@gmail.com"
 ```
 
-Same from the terminal — e.g. who logged in during the last day:
+The second one is the interesting one: every denied login and every attempt to
+reach outside the root. App logs live in the `cos_containers` log; add
+`jsonPayload."cos.googleapis.com/container_name"="sac-caddy"` to see Caddy instead.
+
+Same from the terminal — who logged in during the last day:
 
 ```sh
-gcloud logging read '"login_allowed"' --freshness=1d --format='value(timestamp, jsonPayload.message, textPayload)'
+gcloud logging read 'jsonPayload.event="login_allowed"' --freshness=1d --format='table(timestamp, jsonPayload.email, jsonPayload.ip)'
 ```
 
 Straight from the VM (works even if log shipping is broken):
