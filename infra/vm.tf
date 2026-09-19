@@ -31,6 +31,13 @@ resource "google_compute_instance" "vm" {
     subnetwork = google_compute_subnetwork.main.id
 
     # access_config = "give this interface an external IP".
+    #
+    # Accepted risk: security scanners flag public IPs on VMs (the recommended
+    # pattern is a load balancer in front of private instances). This VM IS
+    # the web server — a load balancer costs ~$18/mo, see NORTH_STAR.md "Key
+    # decisions". Exposure is limited by the firewall (80/443 only, SSH via
+    # IAP) and Caddy being the only listener.
+    #trivy:ignore:GCP-0031
     access_config {
       nat_ip = google_compute_address.vm.address
     }

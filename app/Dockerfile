@@ -4,11 +4,11 @@
 # stages. Only what's needed at runtime reaches the final image.
 #
 # Base images are pinned by DIGEST (@sha256:...), not just by tag. A tag like
-# "22-bookworm-slim" can be re-pointed at different contents at any time; a
+# "22-trixie-slim" can be re-pointed at different contents at any time; a
 # digest is the hash of the exact bytes. Dependabot opens PRs to bump them.
 
 # --- Stage 1: compile TypeScript → dist/ ---------------------------------------
-FROM node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS build
+FROM node:22-trixie-slim@sha256:c5849ff9c9ebcd66615412f0b548ca5b8ecaef84003dc9ac2e077ebe46aaa3f6 AS build
 WORKDIR /app
 # Copy the manifests first: Docker caches each layer, so `npm ci` only re-runs
 # when dependencies change, not on every source edit.
@@ -20,7 +20,7 @@ COPY src ./src
 RUN npm run build
 
 # --- Stage 2: production-only node_modules (no typescript, vitest, eslint...) ---
-FROM node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS deps
+FROM node:22-trixie-slim@sha256:c5849ff9c9ebcd66615412f0b548ca5b8ecaef84003dc9ac2e077ebe46aaa3f6 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
@@ -29,12 +29,17 @@ RUN npm ci --omit=dev
 # Distroless = Node and its runtime libraries, nothing else. No shell, no
 # package manager, no curl: if an attacker got code execution there is almost
 # nothing to work with. The ":nonroot" variant runs as uid 65532.
-FROM gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:5e9868cc8ef163e86378ff90de23ca031f5bb8b2023d4f3288a5e740698919d4
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY public ./public
 COPY package.json ./
+
+# The ":nonroot" base already defaults to this user, but say so explicitly:
+# if the base image were ever swapped, the container must not silently become
+# root. Numeric uid (not a name) so it works without an /etc/passwd lookup.
+USER 65532:65532
 
 # Inside a container "localhost" is the container itself, so the app must
 # listen on all interfaces to be reachable through the published port.
