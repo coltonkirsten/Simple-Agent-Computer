@@ -8,7 +8,7 @@
 # digest is the hash of the exact bytes. Dependabot opens PRs to bump them.
 
 # --- Stage 1: compile TypeScript → dist/ ---------------------------------------
-FROM node:22-trixie-slim@sha256:c5849ff9c9ebcd66615412f0b548ca5b8ecaef84003dc9ac2e077ebe46aaa3f6 AS build
+FROM node:26-trixie-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS build
 WORKDIR /app
 # Copy the manifests first: Docker caches each layer, so `npm ci` only re-runs
 # when dependencies change, not on every source edit.
@@ -20,7 +20,7 @@ COPY src ./src
 RUN npm run build
 
 # --- Stage 2: production-only node_modules (no typescript, vitest, eslint...) ---
-FROM node:22-trixie-slim@sha256:c5849ff9c9ebcd66615412f0b548ca5b8ecaef84003dc9ac2e077ebe46aaa3f6 AS deps
+FROM node:26-trixie-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
