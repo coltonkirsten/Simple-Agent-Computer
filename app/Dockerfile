@@ -29,7 +29,7 @@ RUN npm ci --omit=dev
 # Distroless = Node and its runtime libraries, nothing else. No shell, no
 # package manager, no curl: if an attacker got code execution there is almost
 # nothing to work with. The ":nonroot" variant runs as uid 65532.
-FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:5e9868cc8ef163e86378ff90de23ca031f5bb8b2023d4f3288a5e740698919d4
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:5ef534d3db0ac0c43bee379af4ae49cfbfc0ef38a46c94c52d87c68f32f34d8a
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
